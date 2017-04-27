@@ -1,0 +1,68 @@
+1 Configure The Master
+First we have to edit /etc/mysql/my.cnf. or /etc/my.cnf  We have to enable networking for MySQL, and MySQL should listen on all IP addresses, therefore we comment out these lines (if existant):
+#skip-networking
+skip-external-locking
+bind-address=0.0.0.0
+log-bin=mysql-bin.log
+binlog-do-db=exampledb (database name)
+server-id=1
+
+Then we restart MySQL:
+/etc/init.d/mysql restart
+
+
+Create a user with replication privileges
+GRANT REPLICATION SLAVE ON *.* TO 'slave_user'@'%' IDENTIFIED BY '<some_password>'; (Replace <some_password> with a real password!) 
+FLUSH PRIVILEGES;
+
+Take dump of database(exampledb) and run command
+SHOW MASTER STATUS
+It will give you result like
+---------------+----------+--------------+------------------+
+| File          | Position | Binlog_do_db | Binlog_ignore_db |
++---------------+----------+--------------+------------------+
+| mysql-bin.006 | 183      | database name|                  |
++---------------+----------+--------------+------------------+
+1 row in set (0.00 sec
+
+
+Write down this information, we will need it later on the slave!
+Then leave the MySQL shell:
+quit;
+
+2 Configure The Slave
+On the slave we first have to create the sample database exampledb:
+mysql -u root -p
+Enter password:
+CREATE DATABASE exampledb;
+quit;
+
+store databse dump on slave
+
+Now we have to tell MySQL on the slave that it is the slave, that the master is 192.168.0.100, and that the master database to watch is exampledb. Therefore we add the following lines to /etc/mysql/my.cnf or /etc/my.cnf if file doesnot exists copy from other location
+
+server-id=2
+master-host=192.168.0.100(ip address of master host machine)
+master-user=slave_user(user name)
+master-password=secret (password)
+master-connect-retry=60
+replicate-do-db=exampledb (database name)
+
+Then we restart MySQL:
+/etc/init.d/mysql restart
+
+Finally, we must do this:
+mysql -u root -p
+Enter password:
+SLAVE STOP;
+In the next command (still on the MySQL shell) you have to replace the values appropriately:
+CHANGE MASTER TO MASTER_HOST=’master ip address’, MASTER_USER='slave_user', MASTER_PASSWORD='<some_password>', MASTER_LOG_FILE='mysql-bin.006', MASTER_LOG_POS=183;
+MASTER_HOST is the IP address or hostname of the master (in this example it is 192.168.0.100).
+MASTER_USER is the user we granted replication privileges on the master.
+MASTER_PASSWORD is the password of MASTER_USER on the master.
+MASTER_LOG_FILE is the file MySQL gave back when you ran SHOW MASTER STATUS; on the master.
+MASTER_LOG_POS is the position MySQL gave back when you ran SHOW MASTER STATUS; on the master.
+Now all that is left to do is start the slave. Still on the MySQL shell we run
+START SLAVE;
+quit;
+That's it! Now whenever exampledb is updated on the master, all changes will be replicated to exampledb on the slave. Test it!
